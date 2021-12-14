@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import * as azdev from "azure-devops-node-api";
 import * as BuildInterfaces from "azure-devops-node-api/interfaces/BuildInterfaces";
 import * as ReleaseInterfaces from "azure-devops-node-api/interfaces/ReleaseInterfaces";
+import { PipelineNotFoundError } from "./pipeline.error";
 import { TaskParameters } from "./task.parameters";
 import { Logger as log } from "./util/logger";
 import { PipelineHelper as p } from "./util/pipeline.helper";
@@ -20,28 +21,30 @@ export class PipelineRunner {
 
   public async start(): Promise<any> {
     try {
-      const taskParams = TaskParameters.getTaskParams();
-      const authHandler = azdev.getPersonalAccessTokenHandler(
+      var taskParams = TaskParameters.getTaskParams();
+      let authHandler = azdev.getPersonalAccessTokenHandler(
         taskParams.azureDevopsToken
       );
-      const collectionUrl = UrlParser.GetCollectionUrlBase(
+      let collectionUrl = UrlParser.GetCollectionUrlBase(
         this.taskParameters.azureDevopsProjectUrl
       );
       core.info(
         `Creating connection with Azure DevOps service : "${collectionUrl}"`
       );
-      const webApi = new azdev.WebApi(collectionUrl, authHandler);
+      let webApi = new azdev.WebApi(collectionUrl, authHandler);
       core.info("Connection created");
 
-      const pipelineName = this.taskParameters.azurePipelineName;
-
-      if (taskParams.azurePipelineType?.toLowerCase?.() === "release") {
-        core.info(`RUNNIG RELEASE PIPELINE (${pipelineName})`);
-        const release = await this.RunDesignerPipeline(webApi);
-        await this.MonitorDeployment(webApi, release);
-      } else {
-        core.info(`TRIGGERING BUILD PIPELINE (${pipelineName})`);
+      let pipelineName = this.taskParameters.azurePipelineName;
+      try {
+        core.debug(`Triggering Yaml pipeline : "${pipelineName}"`);
         await this.RunYamlPipeline(webApi);
+      } catch (error) {
+        if (error instanceof PipelineNotFoundError) {
+          core.debug(`Triggering Designer pipeline : "${pipelineName}"`);
+          await this.RunDesignerPipeline(webApi);
+        } else {
+          throw error;
+        }
       }
     } catch (error) {
       let errorMessage: string = `${error.message}`;
@@ -61,9 +64,21 @@ export class PipelineRunner {
 
     const res = await releaseApi.getRelease(projectName, releaseId);
 
+    const releaseStatus = {
+      0: "undefined",
+      1: "not started",
+      2: "in progress",
+      4: "succeeded",
+      8: "cancelled",
+      16: "rejected",
+      32: "queued",
+      64: "scheduled",
+      128: "partially succeeded",
+    };
+
     for (const environment of res.environments) {
       console.log(`ENVIRONMENT (${environment.name})`, {
-        status: environment.status,
+        status: releaseStatus[environment.status],
       });
     }
 
@@ -82,9 +97,7 @@ export class PipelineRunner {
     }
   }
 
-  public async RunYamlPipeline(
-    webApi: azdev.WebApi
-  ): Promise<BuildInterfaces.Build> {
+  public async RunYamlPipeline(webApi: azdev.WebApi): Promise<any> {
     let projectName = UrlParser.GetProjectName(
       this.taskParameters.azureDevopsProjectUrl
     );
@@ -173,13 +186,9 @@ export class PipelineRunner {
         }
       }
     }
-
-    return buildQueueResult;
   }
 
-  public async RunDesignerPipeline(
-    webApi: azdev.WebApi
-  ): Promise<ReleaseInterfaces.Release> {
+  public async RunDesignerPipeline(webApi: azdev.WebApi): Promise<any> {
     let projectName = UrlParser.GetProjectName(
       this.taskParameters.azureDevopsProjectUrl
     );
@@ -269,8 +278,9 @@ export class PipelineRunner {
       if (release != null && release._links != null) {
         log.LogOutputUrl(release._links.web.href);
       }
+      if (this.taskParameters.azurePipelineMonitorDeployment) {
+        await this.MonitorDeployment(webApi, release);
+      }
     }
-
-    return release;
   }
 }

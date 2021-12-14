@@ -6,7 +6,7 @@ export class TaskParameters {
   private _azurePipelineName: string;
   private _azureDevopsToken: string;
   private _azurePipelineVariables: string;
-  private _azurePipelineType: string;
+  private _azurePipelineMonitorDeployment: boolean;
 
   private constructor() {
     this._azureDevopsProjectUrl = core.getInput("azure-devops-project-url", {
@@ -21,17 +21,13 @@ export class TaskParameters {
     this._azurePipelineVariables = core.getInput("azure-pipeline-variables", {
       required: false,
     });
-    this._azurePipelineType =
-      core.getInput("azure-pipeline-type", {
-        required: false,
-      }) ?? "pipeline";
-
-    this.logVariables();
-  }
-
-  private logVariables() {
-    console.log("PIPELINE TYPE", this._azurePipelineType);
-    console.log("PIPELINE VARIABLES", this._azurePipelineVariables);
+    this._azurePipelineMonitorDeployment =
+      core
+        .getInput("azure-pipeline-monitor-deployment", {
+          required: false,
+        })
+        ?.trim()
+        ?.toLowerCase() === "true";
   }
 
   public static getTaskParams() {
@@ -58,7 +54,7 @@ export class TaskParameters {
     return this._azurePipelineVariables;
   }
 
-  public get azurePipelineType() {
-    return this._azurePipelineType;
+  public get azurePipelineMonitorDeployment() {
+    return this._azurePipelineMonitorDeployment;
   }
 }
