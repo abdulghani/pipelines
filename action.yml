@@ -1,4 +1,4 @@
-name: 'Abdul Ghani Custom Azure Pipelines Action' 
+name: 'Custom Azure Pipelines Action' 
 description: 'Trigger a run in Azure pipelines' 
 inputs:
   azure-devops-project-url:
