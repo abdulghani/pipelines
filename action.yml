@@ -13,6 +13,9 @@ inputs:
   azure-devops-token: 
     description: 'Paste personal access token of the user as value of secret variable:AZURE_DEVOPS_TOKEN' 
     required: true 
+  azure-pipeline-type:
+    description: 'Pipeline/Release'
+    required: false
 runs: 
   using: 'node12' 
   main: 'lib/main.js' 
