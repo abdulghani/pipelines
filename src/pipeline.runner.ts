@@ -143,6 +143,63 @@ export class PipelineRunner {
     }
   }
 
+  public async MonitorDeployment(
+    webApi: azdev.WebApi,
+    release: ReleaseInterfaces.Release
+  ) {
+    const releaseId = release.id;
+    const projectName = UrlParser.GetProjectName(
+      this.taskParameters.azureDevopsProjectUrl
+    );
+    const releaseApi = await webApi.getReleaseApi();
+
+    const res = await releaseApi.getRelease(projectName, releaseId);
+
+    const releaseStatus = {
+      0: "undefined",
+      1: "not started",
+      2: "in progress",
+      4: "succeeded",
+      8: "cancelled",
+      16: "rejected",
+      32: "queued",
+      64: "scheduled",
+      128: "partially succeeded",
+    };
+
+    for (const environment of res.environments) {
+      console.log(`ENVIRONMENT (${environment.name})`, {
+        status: releaseStatus[environment.status],
+      });
+    }
+
+    const retryStatuses = [
+      ReleaseInterfaces.EnvironmentStatus.Succeeded,
+      ReleaseInterfaces.EnvironmentStatus.Canceled,
+      ReleaseInterfaces.EnvironmentStatus.Rejected,
+    ];
+    const failedStatuses = [
+      ReleaseInterfaces.EnvironmentStatus.Canceled,
+      ReleaseInterfaces.EnvironmentStatus.Rejected,
+    ];
+    if (res.environments.find((item) => !retryStatuses.includes(item.status))) {
+      await new Promise((res) => {
+        setTimeout(() => {
+          this.MonitorDeployment(webApi, release);
+          res(true);
+        }, 4500);
+      });
+    } else if (
+      res.environments.find((item) => failedStatuses.includes(item.status))
+    ) {
+      console.log(
+        "FAILURE DEPLOYMENT",
+        res.environments.map((item) => releaseStatus[item.status])
+      );
+      process.exit(1);
+    }
+  }
+
   public async RunDesignerPipeline(webApi: azdev.WebApi): Promise<any> {
     let projectName = UrlParser.GetProjectName(
       this.taskParameters.azureDevopsProjectUrl
@@ -232,6 +289,9 @@ export class PipelineRunner {
       log.LogPipelineTriggerOutput(release);
       if (release != null && release._links != null) {
         log.LogOutputUrl(release._links.web.href);
+      }
+      if (this.taskParameters.azurePipelineMonitorDeployment) {
+        await this.MonitorDeployment(webApi, release);
       }
     }
   }
